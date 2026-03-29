@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 from openai import OpenAI
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from context_engineering import ContextEngineer
 from multi_agent import Agent, Orchestrator
+from vectordb import VectorDB
 
 
 @dataclass(frozen=True)
@@ -512,6 +514,23 @@ def _demo_complex_agentic_workflow(client: OpenAI, model: str, on_event: Any = N
     )
     ce.add_artifact("Tests added.", path="complex_demo/test_scheduler.py", source="tester")
 
+    vdb = VectorDB()
+    vdb_indexed = False
+    try:
+        root = Path("workspace_sandbox") / "complex_demo"
+        scheduler_path = root / "scheduler.py"
+        test_path = root / "test_scheduler.py"
+        texts: list[tuple[str, str]] = []
+        if scheduler_path.exists():
+            texts.append(("complex_demo/scheduler.py", scheduler_path.read_text(encoding="utf-8", errors="replace")))
+        if test_path.exists():
+            texts.append(("complex_demo/test_scheduler.py", test_path.read_text(encoding="utf-8", errors="replace")))
+        if texts:
+            vdb.build_from_texts(texts)
+            vdb_indexed = vdb.enabled
+    except Exception:
+        vdb_indexed = False
+
     max_iters = 3
     run_report: dict[str, Any] = {
         "max_iters": max_iters,
@@ -547,11 +566,30 @@ def _demo_complex_agentic_workflow(client: OpenAI, model: str, on_event: Any = N
             run_report["passed"] = True
             break
 
+        retrieval_block = ""
+        if vdb_indexed and isinstance(parsed, dict):
+            q_parts: list[str] = []
+            stderr = parsed.get("stderr")
+            stdout = parsed.get("stdout")
+            if isinstance(stderr, str) and stderr.strip():
+                q_parts.append(stderr)
+            if isinstance(stdout, str) and stdout.strip():
+                q_parts.append(stdout)
+            q_parts.append("schedule_tasks kahn algorithm unknown dependency cycle ValueError")
+            query = "\n".join(q_parts)
+            hits = vdb.retrieve(query, k=4)
+            if hits:
+                lines: list[str] = []
+                for h in hits:
+                    lines.append(f"SOURCE: {h.source}\n{h.text}")
+                retrieval_block = "\n\nRETRIEVED_CONTEXT (vector_db):\n" + "\n\n---\n\n".join(lines)
+
         fix_prompt = (
             "Tests are failing. Fix 'complex_demo/scheduler.py' so all tests pass. "
             "Use sandbox_read on 'complex_demo/scheduler.py' and 'complex_demo/test_scheduler.py' if needed. "
             "Write the full corrected file via sandbox_write.\n\n"
             f"TEST_OUTPUT_JSON:\n{parsed}\n"
+            + retrieval_block
         )
         f_turn = orch.ask(f_thread, fix_prompt)
         last_fix_text = f_turn.assistant_text
