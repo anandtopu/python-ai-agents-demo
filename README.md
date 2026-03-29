@@ -37,6 +37,8 @@ It includes:
 - **Observability** (`observability.py`) + backend trace persistence
 - **Vector DB / RAG** (`vectordb.py`)
   - FAISS (`faiss-cpu`) via `langchain-community`
+- **MCP server** (`mcp_server.py`)
+  - Model Context Protocol server exposing `tools.py` over MCP (`mcp[cli]`)
 
 ### Web app
 
@@ -187,6 +189,7 @@ python multi_agent_demo.py langsmith
   vectordb.py
   agentic_eval.py
   observability.py
+  mcp_server.py
   backend/
     main.py
     README.md
@@ -227,6 +230,8 @@ If these variables are not set, the demo will print setup instructions instead o
 
 - The backend writes JSONL traces to `traces/<run_id>.jsonl`.
 - The web UI can load past runs via `GET /api/runs`.
+  - `GET /api/runs` lists available run IDs
+  - `GET /api/runs/{run_id}` loads a specific run trace
 
 ## Tests
 
@@ -240,6 +245,30 @@ python -m unittest -q
 
 - `docs/ARCHITECTURE.md`
 - `docs/RUNBOOK.md`
+
+## MCP server (Model Context Protocol)
+
+This repo includes an MCP server (`mcp_server.py`) that exposes the local demo tools (sandbox files, project search, restricted shell, etc.) over MCP.
+
+### Install dependency
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Run with MCP dev tools / Inspector
+
+If you have the MCP CLI available (installed via `mcp[cli]`), you can run:
+
+```powershell
+python -m mcp dev mcp_server.py
+```
+
+Or run directly (stdio transport):
+
+```powershell
+python mcp_server.py
+```
 
 Artifacts written by demos will appear under:
 
@@ -271,6 +300,15 @@ Backend endpoints:
 
 - `GET http://127.0.0.1:8000/api/demos`
 - `POST http://127.0.0.1:8000/api/run`
+- `POST http://127.0.0.1:8000/api/eval`
+- `GET http://127.0.0.1:8000/api/runs`
+- `GET http://127.0.0.1:8000/api/runs/{run_id}`
+
+## Vector DB (optional)
+
+The `complex` workflow can optionally use a FAISS-backed vector store to retrieve relevant snippets from the generated sandbox code/tests during the repair loop.
+
+If FAISS or embeddings are unavailable, the workflow falls back to a non-RAG fix loop.
 
 ### Start the frontend
 
