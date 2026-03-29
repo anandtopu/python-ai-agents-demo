@@ -1,16 +1,47 @@
-# First Agent (Python)
+# Python AI Agents Demo
 
-A minimal Python CLI agent that uses an OpenAI(-compatible) Chat Completions API with:
+This is a teaching/demo repository for building **multi-agent** and **agentic workflows** in Python.
 
-- Tool calling (web fetch, sandboxed files, project search, restricted shell)
-- Persistent chat history (`agent_history.json`)
-- Saved sessions (`sessions/*.json`)
-- History summarization (`/summary`)
-- Multi-agent orchestration demos (`/ma <demo>`)
+It includes:
+
+- A minimal **CLI chat agent** with tool calling
+- A set of **multi-agent demos** (handoffs, debate, reviewer/fixer loops, complex workflows)
+- **Context engineering** primitives (shared context store, retrieval, handoff packets)
+- **Agentic evaluation** (judge-style scoring with structured output)
+- **Observability/tracing** (event timeline, persisted JSONL traces)
+- A **web UI** (FastAPI backend + React/Vite frontend) to visualize multi-agent runs
 
 ## Requirements
 
 - Python 3.10+ (3.11+ recommended)
+- Node.js 18+ (for the web UI)
+
+## Technology stack
+
+### Python / LLM
+
+- **OpenAI Python SDK** (`openai`)
+  - OpenAI-compatible Chat Completions (supports `OPENAI_BASE_URL`)
+- **LangChain** (`langchain`, `langchain-openai`)
+  - Structured outputs demo (`lc_structured`)
+  - Optional LangSmith tracing demo (`langsmith`)
+- **LangGraph** (`langgraph`)
+  - Human-in-the-loop interrupts demo (`lg_hitl`)
+- **LangSmith** (`langsmith`)
+  - Production-style tracing enablement via env vars
+
+### Orchestration / tooling
+
+- **Custom tool-calling loop** (`multi_agent.py`) with local tools (`tools.py`)
+- **Context engineering** (`context_engineering.py`)
+- **Observability** (`observability.py`) + backend trace persistence
+- **Vector DB / RAG** (`vectordb.py`)
+  - FAISS (`faiss-cpu`) via `langchain-community`
+
+### Web app
+
+- **FastAPI** backend (`backend/main.py`)
+- **React + Vite + TypeScript** frontend (`frontend/`)
 
 ## Setup
 
@@ -102,6 +133,18 @@ Multi-agent logic lives in:
 - `multi_agent.py` (Agent + Orchestrator + tool-loop runner)
 - `multi_agent_demo.py` (practice demos)
 
+Current demos:
+
+- `research` (researcher → writer → critic)
+- `code_review` (author → reviewer → fixer)
+- `debate` (pro → con → judge)
+- `context` / `cse` (context engineering handoffs)
+- `lc_structured` (LangChain structured output)
+- `lg_hitl` (LangGraph interrupts / HITL)
+- `complex` (planner → implement → tests → verify/repair loop → critic) + optional VectorDB retrieval
+- `context_limits` (context poisoning/distraction/confusion/clash + mitigation)
+- `langsmith` (LangSmith production-style tracing enablement)
+
 ### Run from the CLI
 
 Inside `python agent_cli.py`:
@@ -132,6 +175,34 @@ python multi_agent_demo.py context_limits
 python multi_agent_demo.py langsmith
 ```
 
+## Project structure
+
+```text
+.
+  agent_cli.py
+  tools.py
+  multi_agent.py
+  multi_agent_demo.py
+  context_engineering.py
+  vectordb.py
+  agentic_eval.py
+  observability.py
+  backend/
+    main.py
+    README.md
+  frontend/
+    src/
+    README.md
+  docs/
+    ARCHITECTURE.md
+    RUNBOOK.md
+  scripts/
+    run_cli.ps1
+    run_backend.ps1
+  tests (unittest)
+    test_*.py
+```
+
 ## LangSmith (production tracing demo)
 
 There is a demo (`/ma langsmith`) that shows how production projects typically enable LangSmith tracing using environment variables.
@@ -151,6 +222,24 @@ Then run:
 ```
 
 If these variables are not set, the demo will print setup instructions instead of failing.
+
+## Observability and traces
+
+- The backend writes JSONL traces to `traces/<run_id>.jsonl`.
+- The web UI can load past runs via `GET /api/runs`.
+
+## Tests
+
+Run:
+
+```powershell
+python -m unittest -q
+```
+
+## Docs
+
+- `docs/ARCHITECTURE.md`
+- `docs/RUNBOOK.md`
 
 Artifacts written by demos will appear under:
 
