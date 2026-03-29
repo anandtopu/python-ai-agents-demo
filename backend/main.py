@@ -48,6 +48,7 @@ def list_demos() -> dict[str, Any]:
             "lg_hitl",
             "complex",
             "context_limits",
+            "langsmith",
         ]
     }
 

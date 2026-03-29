@@ -64,7 +64,7 @@ python agent_cli.py
 - `/summary`
   - Compresses older history into a compact memory message while keeping recent turns.
 - `/ma <demo>`
-  - Runs a multi-agent demo: `research`, `code_review`, `debate`, `context`, `lc_structured`, `lg_hitl`, `complex`, or `context_limits`.
+  - Runs a multi-agent demo: `research`, `code_review`, `debate`, `context`, `lc_structured`, `lg_hitl`, `complex`, `context_limits`, or `langsmith`.
 
 ## Tools available to the agent
 
@@ -115,6 +115,7 @@ Inside `python agent_cli.py`:
 /ma lg_hitl
 /ma complex
 /ma context_limits
+/ma langsmith
 ```
 
 ### Run directly
@@ -128,7 +129,28 @@ python multi_agent_demo.py lc_structured
 python multi_agent_demo.py lg_hitl
 python multi_agent_demo.py complex
 python multi_agent_demo.py context_limits
+python multi_agent_demo.py langsmith
 ```
+
+## LangSmith (production tracing demo)
+
+There is a demo (`/ma langsmith`) that shows how production projects typically enable LangSmith tracing using environment variables.
+
+To record traces in LangSmith, set:
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=...
+LANGSMITH_PROJECT=python-ai-agents-demo
+```
+
+Then run:
+
+```text
+/ma langsmith
+```
+
+If these variables are not set, the demo will print setup instructions instead of failing.
 
 Artifacts written by demos will appear under:
 

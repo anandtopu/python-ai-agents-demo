@@ -55,15 +55,18 @@ def run_demo(
     if demo in {"context_limits", "context_limitations", "limits"}:
         return _demo_context_limitations(client, model, on_event=on_event)
 
+    if demo in {"langsmith", "langsmith_prod", "ls"}:
+        return _demo_langsmith_production(model)
+
     raise ValueError(
-        "Unknown demo. Try: research | code_review | debate | context | lc_structured | lg_hitl | complex | context_limits"
+        "Unknown demo. Try: research | code_review | debate | context | lc_structured | lg_hitl | complex | context_limits | langsmith"
     )
 
 
 def _main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(
-            "Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context | lc_structured | lg_hitl | complex)"
+            "Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context | lc_structured | lg_hitl | complex | context_limits | langsmith)"
         )
 
     demo = sys.argv[1]
@@ -696,6 +699,72 @@ def _demo_context_limitations(client: OpenAI, model: str, on_event: Any = None) 
             "confusion": confusion.assistant_text,
             "clash": clash.assistant_text,
             "mitigation": mitigation.assistant_text,
+        },
+    )
+
+
+def _demo_langsmith_production(model: str) -> DemoResult:
+    enabled = os.getenv("LANGSMITH_TRACING", "").strip().lower() in {"1", "true", "yes"}
+    api_key_set = bool(os.getenv("LANGSMITH_API_KEY"))
+    project = os.getenv("LANGSMITH_PROJECT", "python-ai-agents-demo")
+    endpoint = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+    instructions = {
+        "how_to_enable": {
+            "LANGSMITH_TRACING": "true",
+            "LANGSMITH_API_KEY": "<your key>",
+            "LANGSMITH_PROJECT": project,
+            "LANGSMITH_ENDPOINT": endpoint,
+        },
+        "notes": [
+            "In production you typically set these as environment variables in your deployment (container/VM).",
+            "Use tags + metadata on each invocation to correlate traces with request IDs, user IDs, and feature flags.",
+        ],
+    }
+
+    if not (enabled and api_key_set):
+        return DemoResult(
+            demo="langsmith_production",
+            outputs={
+                "tracing_enabled": enabled,
+                "langsmith_api_key_set": api_key_set,
+                "project": project,
+                "endpoint": endpoint,
+                "instructions": instructions,
+                "result": "LangSmith tracing not enabled in this environment. Set LANGSMITH_TRACING=true and LANGSMITH_API_KEY to record traces.",
+            },
+        )
+
+    llm = ChatOpenAI(model=model)
+
+    # Production-style correlation fields
+    request_id = os.getenv("DEMO_REQUEST_ID", "req-demo-001")
+    user_id = os.getenv("DEMO_USER_ID", "user-demo")
+
+    config = {
+        "tags": ["demo", "langsmith", "production"],
+        "metadata": {
+            "request_id": request_id,
+            "user_id": user_id,
+            "demo": "langsmith_production",
+        },
+    }
+
+    resp = llm.invoke(
+        "Write a 4-bullet production checklist for shipping a multi-agent system with tracing/observability.",
+        config=config,
+    )
+
+    return DemoResult(
+        demo="langsmith_production",
+        outputs={
+            "tracing_enabled": enabled,
+            "langsmith_api_key_set": api_key_set,
+            "project": project,
+            "endpoint": endpoint,
+            "invocation_tags": config["tags"],
+            "invocation_metadata": config["metadata"],
+            "result": getattr(resp, "content", str(resp)),
         },
     )
 
