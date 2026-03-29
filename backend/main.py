@@ -44,6 +44,7 @@ def list_demos() -> dict[str, Any]:
             "context",
             "lc_structured",
             "lg_hitl",
+            "complex",
         ]
     }
 

@@ -49,13 +49,18 @@ def run_demo(
     if demo in {"lg_hitl", "langgraph_hitl", "hitl"}:
         return _demo_langgraph_hitl(client, model)
 
-    raise ValueError("Unknown demo. Try: research | code_review | debate | context | lc_structured | lg_hitl")
+    if demo in {"complex", "complex_workflow", "agentic_workflow"}:
+        return _demo_complex_agentic_workflow(client, model, on_event=on_event)
+
+    raise ValueError(
+        "Unknown demo. Try: research | code_review | debate | context | lc_structured | lg_hitl | complex"
+    )
 
 
 def _main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(
-            "Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context | lc_structured | lg_hitl)"
+            "Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context | lc_structured | lg_hitl | complex)"
         )
 
     demo = sys.argv[1]
@@ -422,6 +427,165 @@ def _demo_langgraph_hitl(_client: OpenAI, model: str) -> DemoResult:
             "result": dict(resumed),
         },
     )
+
+
+def _demo_complex_agentic_workflow(client: OpenAI, model: str, on_event: Any = None) -> DemoResult:
+    ce = ContextEngineer()
+    ce.add_user_goal(
+        "Implement a small but non-trivial Python library + tests with an agentic workflow: plan, build, test, repair, and review."
+    )
+    ce.add_decision("All artifacts must be written under workspace_sandbox/complex_demo/.", source="demo")
+    ce.add_decision("Use only standard library. Tests must run with: python -m unittest -q", source="demo")
+    ce.add_decision("Prefer small, readable functions and clear error messages.", source="demo")
+
+    orch = Orchestrator(client, model, context_engineer=ce, on_event=on_event)
+
+    planner = Agent(
+        name="Planner",
+        system_prompt=(
+            "You create an implementation plan and file breakdown. "
+            "Output a short numbered plan and the exact file paths to be created under complex_demo/."
+        ),
+    )
+    implementer = Agent(
+        name="Implementer",
+        system_prompt=(
+            "You implement code in the sandbox using sandbox_write. "
+            "Write complete files. Keep code minimal and correct."
+        ),
+    )
+    tester = Agent(
+        name="Tester",
+        system_prompt=(
+            "You write tests in the sandbox using sandbox_write, then run them using run_shell. "
+            "Return the test output and whether it passed."
+        ),
+    )
+    fixer = Agent(
+        name="Fixer",
+        system_prompt=(
+            "You fix failing behavior by updating files in the sandbox using sandbox_write. "
+            "Always write full corrected file contents."
+        ),
+    )
+    critic = Agent(
+        name="Critic",
+        system_prompt=(
+            "You do a final review. Identify remaining edge cases and suggest improvements. "
+            "Keep it concise and actionable."
+        ),
+    )
+
+    task = (
+        "Build a tiny task scheduler library. Requirements:\n"
+        "- Implement function schedule_tasks(tasks) where tasks is a list of objects like: {id: str, deps: list[str], duration: int}.\n"
+        "- Output: (order, total_time). order is a valid topological order by deps; total_time is sum(duration).\n"
+        "- Raise ValueError with a helpful message if there is a cycle or a dep references an unknown id.\n"
+        "- Provide a CLI entrypoint in the module: python -m complex_demo.scheduler <json_string> prints order and total_time.\n"
+        "- Use only stdlib."
+    )
+
+    p_thread = orch.start_thread(planner)
+    p = orch.ask(p_thread, task)
+    ce.add_artifact("Implementation plan created.", path="complex_demo/", source="planner")
+    ce.add_decision("Implement scheduler using Kahn's algorithm (queue of zero-indegree nodes).", source="planner")
+
+    i_thread = orch.start_thread(implementer)
+    i = orch.ask(
+        i_thread,
+        "Implement the library in 'complex_demo/scheduler.py' according to the requirements. "
+        "Also write 'complex_demo/__init__.py' (can be empty). Use sandbox_write for both files.",
+    )
+    ce.add_artifact("Initial implementation written.", path="complex_demo/scheduler.py", source="implementer")
+
+    t_thread = orch.start_thread(tester)
+    t0 = orch.ask(
+        t_thread,
+        "Write tests in 'complex_demo/test_scheduler.py' covering: normal DAG ordering, unknown dependency, and cycle detection. "
+        "Do not run tests yet. Use sandbox_write.",
+    )
+    ce.add_artifact("Tests added.", path="complex_demo/test_scheduler.py", source="tester")
+
+    max_iters = 3
+    run_report: dict[str, Any] = {
+        "max_iters": max_iters,
+        "iterations": [],
+        "passed": False,
+    }
+
+    f_thread = orch.start_thread(fixer)
+
+    last_fix_text = ""
+    for attempt in range(1, max_iters + 1):
+        t_run = orch.ask(
+            t_thread,
+            "Run the test suite now using run_shell command='python' args=['-m','unittest','-q']. "
+            "Return a brief summary AND end with a single line exactly like: TEST_RESULT_JSON: {\"returncode\": <int>, \"stdout\": <str>, \"stderr\": <str>}.",
+        )
+
+        parsed = _parse_marked_json(t_run.assistant_text, "TEST_RESULT_JSON")
+        iter_entry: dict[str, Any] = {
+            "attempt": attempt,
+            "tester_summary": t_run.assistant_text,
+            "test_result": parsed,
+        }
+        run_report["iterations"].append(iter_entry)
+
+        returncode = None
+        if isinstance(parsed, dict):
+            rc = parsed.get("returncode")
+            if isinstance(rc, int):
+                returncode = rc
+
+        if returncode == 0:
+            run_report["passed"] = True
+            break
+
+        fix_prompt = (
+            "Tests are failing. Fix 'complex_demo/scheduler.py' so all tests pass. "
+            "Use sandbox_read on 'complex_demo/scheduler.py' and 'complex_demo/test_scheduler.py' if needed. "
+            "Write the full corrected file via sandbox_write.\n\n"
+            f"TEST_OUTPUT_JSON:\n{parsed}\n"
+        )
+        f_turn = orch.ask(f_thread, fix_prompt)
+        last_fix_text = f_turn.assistant_text
+        ce.add_artifact(f"Fix attempt {attempt} applied.", path="complex_demo/scheduler.py", source="fixer")
+
+    c_thread = orch.start_thread(critic)
+    c = orch.ask(
+        c_thread,
+        "Review the final design and point out any remaining edge cases or improvements. "
+        "Focus on correctness, error messages, and CLI usability.",
+    )
+
+    return DemoResult(
+        demo="complex_agentic_workflow",
+        outputs={
+            "plan": p.assistant_text,
+            "implement": i.assistant_text,
+            "tests": t0.assistant_text,
+            "fix": last_fix_text,
+            "run_report": run_report,
+            "review": c.assistant_text,
+            "shared_context_snapshot": ce.store.as_compact_text(max_items=60),
+        },
+    )
+
+
+def _parse_marked_json(text: str, marker: str) -> dict[str, Any] | None:
+    idx = text.rfind(marker + ":")
+    if idx < 0:
+        return None
+    payload = text[idx + len(marker) + 1 :].strip()
+    if not payload:
+        return None
+    try:
+        obj = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    return obj
 
 
 if __name__ == "__main__":

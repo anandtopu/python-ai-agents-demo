@@ -64,7 +64,7 @@ python agent_cli.py
 - `/summary`
   - Compresses older history into a compact memory message while keeping recent turns.
 - `/ma <demo>`
-  - Runs a multi-agent demo: `research`, `code_review`, `debate`, `context`, `lc_structured`, or `lg_hitl`.
+  - Runs a multi-agent demo: `research`, `code_review`, `debate`, `context`, `lc_structured`, `lg_hitl`, or `complex`.
 
 ## Tools available to the agent
 
@@ -113,6 +113,7 @@ Inside `python agent_cli.py`:
 /ma context
 /ma lc_structured
 /ma lg_hitl
+/ma complex
 ```
 
 ### Run directly
@@ -124,6 +125,7 @@ python multi_agent_demo.py debate
 python multi_agent_demo.py context
 python multi_agent_demo.py lc_structured
 python multi_agent_demo.py lg_hitl
+python multi_agent_demo.py complex
 ```
 
 Artifacts written by demos will appear under:

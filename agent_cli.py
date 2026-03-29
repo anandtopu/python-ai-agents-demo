@@ -238,7 +238,7 @@ def main() -> None:
             parts = user_text.split(maxsplit=1)
             if len(parts) != 2:
                 print(
-                    "Usage: /ma <demo>  (demos: research | code_review | debate | context | cse | lc_structured | lg_hitl)"
+                    "Usage: /ma <demo>  (demos: research | code_review | debate | context | cse | lc_structured | lg_hitl | complex)"
                 )
                 continue
             try:
