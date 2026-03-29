@@ -237,7 +237,7 @@ def main() -> None:
         if user_text.lower().startswith("/ma"):
             parts = user_text.split(maxsplit=1)
             if len(parts) != 2:
-                print("Usage: /ma <demo>  (demos: research | code_review | debate)")
+                print("Usage: /ma <demo>  (demos: research | code_review | debate | context | cse)")
                 continue
             try:
                 result = run_demo(client, model, parts[1])

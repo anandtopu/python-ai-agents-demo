@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from openai import OpenAI
 
+from context_engineering import ContextEngineer
 from tools import TOOL_SPECS, run_tool
 
 
@@ -89,11 +90,20 @@ class ToolLoopRunner:
 
 
 class Orchestrator:
-    def __init__(self, client: OpenAI, model: str) -> None:
+    def __init__(self, client: OpenAI, model: str, context_engineer: ContextEngineer | None = None) -> None:
         self._runner = ToolLoopRunner(client=client, model=model)
+        self._context_engineer = context_engineer
 
     def start_thread(self, agent: Agent) -> list[dict[str, Any]]:
-        return [{"role": "system", "content": f"[{agent.name}] {agent.system_prompt}"}]
+        thread: list[dict[str, Any]] = [
+            {"role": "system", "content": f"[{agent.name}] {agent.system_prompt}"},
+        ]
+        if self._context_engineer:
+            thread.extend(self._context_engineer.inject_system_context())
+        return thread
+
+    def add_handoff(self, thread: list[dict[str, Any]], handoff_text: str) -> None:
+        thread.append({"role": "user", "content": handoff_text})
 
     def ask(self, thread: list[dict[str, Any]], user_text: str) -> TurnResult:
         thread.append({"role": "user", "content": user_text})

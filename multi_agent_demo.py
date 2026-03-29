@@ -7,6 +7,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from context_engineering import ContextEngineer
 from multi_agent import Agent, Orchestrator
 
 
@@ -28,12 +29,15 @@ def run_demo(client: OpenAI, model: str, demo: str) -> DemoResult:
     if demo in {"debate", "debate_consensus"}:
         return _demo_debate_consensus(client, model)
 
-    raise ValueError("Unknown demo. Try: research | code_review | debate")
+    if demo in {"context", "context_engineering", "cse"}:
+        return _demo_context_engineering_cse(client, model)
+
+    raise ValueError("Unknown demo. Try: research | code_review | debate | context")
 
 
 def _main() -> None:
     if len(sys.argv) != 2:
-        raise SystemExit("Usage: python multi_agent_demo.py <demo>  (research | code_review | debate)")
+        raise SystemExit("Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context)")
 
     demo = sys.argv[1]
     api_key = os.getenv("OPENAI_API_KEY")
@@ -201,6 +205,120 @@ def _demo_debate_consensus(client: OpenAI, model: str) -> DemoResult:
     return DemoResult(
         demo="debate_consensus",
         outputs={"pro": p.assistant_text, "con": c.assistant_text, "judge": j.assistant_text},
+    )
+
+
+def _demo_context_engineering_cse(client: OpenAI, model: str) -> DemoResult:
+    ce = ContextEngineer()
+    ce.add_user_goal(
+        "Create a small CSE-style demo: debug an algorithm implementation, add tests, and write a short explanation. "
+        "Prefer minimal, readable Python in a single module."
+    )
+    ce.add_decision("All code artifacts must be written to workspace_sandbox under 'cse_demo/'.", source="demo")
+    ce.add_decision("Use only standard library for tests (unittest).", source="demo")
+
+    orch = Orchestrator(client, model, context_engineer=ce)
+
+    implementer = Agent(
+        name="Implementer",
+        system_prompt=(
+            "You are a software engineer. Implement the requested code. "
+            "When asked to write files, use sandbox_write into workspace_sandbox. "
+            "Keep the code small and clear."
+        ),
+    )
+    tester = Agent(
+        name="Tester",
+        system_prompt=(
+            "You write focused tests. Use unittest. "
+            "When asked to write files, use sandbox_write into workspace_sandbox."
+        ),
+    )
+    explainer = Agent(
+        name="Explainer",
+        system_prompt=(
+            "You explain the final solution concisely: what was wrong, what changed, complexity, and how to run tests."
+        ),
+    )
+
+    buggy_spec = (
+        "Write a Python module 'cse_demo/intervals.py' that merges overlapping intervals. "
+        "Intentionally include a subtle bug around adjacency (e.g., [1,2] and [3,4]) and sorting edge cases. "
+        "Also include a small main block printing a sample merge."
+    )
+
+    i_thread = orch.start_thread(implementer)
+    i1 = orch.ask(i_thread, buggy_spec)
+
+    ce.add_artifact(
+        "Created initial buggy implementation at cse_demo/intervals.py (expected to have adjacency/sorting issues).",
+        path="cse_demo/intervals.py",
+        source="implementer",
+    )
+
+    handoff_to_tester = ce.make_handoff(
+        from_agent="Implementer",
+        to_agent="Tester",
+        goal="Write tests that expose the bug(s) in the interval merging implementation.",
+        retrieve_query="interval merge adjacency sorting unittest cse_demo/intervals.py",
+        extra_context={"module_path": "cse_demo/intervals.py"},
+    )
+
+    t_thread = orch.start_thread(tester)
+    orch.add_handoff(t_thread, handoff_to_tester.to_user_message())
+    t1 = orch.ask(
+        t_thread,
+        "Using the handoff packet, write a test file 'cse_demo/test_intervals.py' that fails on the buggy behavior. "
+        "Then write it to the sandbox.",
+    )
+
+    ce.add_artifact(
+        "Added tests at cse_demo/test_intervals.py to expose merge edge cases.",
+        path="cse_demo/test_intervals.py",
+        source="tester",
+    )
+
+    handoff_back_to_implementer = ce.make_handoff(
+        from_agent="Tester",
+        to_agent="Implementer",
+        goal="Fix the interval merge implementation so tests pass, without changing the public API.",
+        retrieve_query="failing tests interval merge adjacency fix",
+        extra_context={"test_path": "cse_demo/test_intervals.py", "module_path": "cse_demo/intervals.py"},
+    )
+
+    orch.add_handoff(i_thread, handoff_back_to_implementer.to_user_message())
+    i2 = orch.ask(
+        i_thread,
+        "Fix 'cse_demo/intervals.py' so it correctly merges overlapping intervals and (by decision) treats adjacent intervals as merged. "
+        "Ensure it sorts safely and handles empty input. Write the full corrected file to the sandbox.",
+    )
+
+    ce.add_decision("Adjacency is merged: treat end >= next_start - 1 as continuous only if intervals are integer endpoints.", source="implementer")
+
+    handoff_to_explainer = ce.make_handoff(
+        from_agent="Implementer",
+        to_agent="Explainer",
+        goal="Explain the final behavior and how context engineering helped coordinate multi-agent work.",
+        retrieve_query="goals decisions artifacts intervals tests handoff",
+        extra_context={"artifacts": ["cse_demo/intervals.py", "cse_demo/test_intervals.py"]},
+    )
+
+    e_thread = orch.start_thread(explainer)
+    orch.add_handoff(e_thread, handoff_to_explainer.to_user_message())
+    e1 = orch.ask(
+        e_thread,
+        "Using the handoff packet, explain: bug(s), fix, complexity, and how to run tests with run_shell.",
+    )
+
+    return DemoResult(
+        demo="context_engineering_cse",
+        outputs={
+            "implementer_initial": i1.assistant_text,
+            "tester": t1.assistant_text,
+            "implementer_fix": i2.assistant_text,
+            "explainer": e1.assistant_text,
+            "shared_context_snapshot": ce.store.as_compact_text(max_items=50),
+        },
     )
 
 
