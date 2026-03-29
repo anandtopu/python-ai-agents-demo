@@ -374,7 +374,7 @@ def _demo_langgraph_hitl(client: OpenAI, model: str) -> DemoResult:
 
     State = dict[str, Any]
 
-    def plan_node(state: State) -> dict[str, Any]:
+    def plan_node(_state: State) -> dict[str, Any]:
         llm = ChatOpenAI(model=model, api_key=api_key, base_url=base_url)
         plan = (
             llm.invoke("Propose a 3-step plan to fix a failing unit test in a small Python project. Keep it short.")
@@ -386,10 +386,10 @@ def _demo_langgraph_hitl(client: OpenAI, model: str) -> DemoResult:
         decision = interrupt({"question": "Approve this plan?", "plan": state.get("plan", "")})
         return Command(goto="execute" if decision else "cancel")
 
-    def execute_node(state: State) -> dict[str, Any]:
+    def execute_node(_state: State) -> dict[str, Any]:
         return {"status": "approved_and_executed"}
 
-    def cancel_node(state: State) -> dict[str, Any]:
+    def cancel_node(_state: State) -> dict[str, Any]:
         return {"status": "rejected"}
 
     builder = StateGraph(State)
