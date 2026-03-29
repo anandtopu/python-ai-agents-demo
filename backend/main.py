@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from agentic_eval import evaluate_text
 from multi_agent_demo import run_demo
+from observability import InMemorySink, JsonlFileSink, Tracer, read_jsonl
 
 
 class RunRequest(BaseModel):
@@ -45,8 +47,30 @@ def list_demos() -> dict[str, Any]:
             "lc_structured",
             "lg_hitl",
             "complex",
+            "context_limits",
         ]
     }
+
+
+@app.get("/api/runs")
+def list_runs() -> dict[str, Any]:
+    root = Path("traces")
+    root.mkdir(parents=True, exist_ok=True)
+    runs: list[dict[str, Any]] = []
+    for p in root.glob("*.jsonl"):
+        try:
+            stat = p.stat()
+        except OSError:
+            continue
+        runs.append({"run_id": p.stem, "path": p.as_posix(), "mtime": stat.st_mtime})
+    runs.sort(key=lambda x: x["mtime"], reverse=True)
+    return {"runs": runs}
+
+
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str) -> dict[str, Any]:
+    path = Tracer.default_trace_path(run_id)
+    return {"run_id": run_id, "events": read_jsonl(path)}
 
 
 @app.post("/api/run")
@@ -63,11 +87,22 @@ def run_demo_api(req: RunRequest) -> dict[str, Any]:
     client = OpenAI(api_key=api_key, base_url=base_url)
 
     events: list[dict[str, Any]] = []
+    tracer = Tracer(metadata={"demo": req.demo})
+    trace_path = Tracer.default_trace_path(tracer.run_id)
+    tracer = Tracer(
+        run_id=tracer.run_id,
+        metadata={"demo": req.demo},
+        sinks=[InMemorySink(events), JsonlFileSink(trace_path)],
+    )
+    tracer.emit({"type": "run_start", "demo": req.demo})
 
     try:
-        result = run_demo(client, model, req.demo, on_event=lambda ev: events.append(ev))
+        result = run_demo(client, model, req.demo, on_event=tracer.emit)
     except Exception as e:
+        tracer.emit({"type": "run_error", "error": str(e)})
         raise HTTPException(status_code=400, detail=str(e)) from e
+    finally:
+        tracer.emit({"type": "run_end", "demo": req.demo})
 
     evaluation: dict[str, Any] | None = None
     if req.evaluate:
@@ -88,6 +123,8 @@ def run_demo_api(req: RunRequest) -> dict[str, Any]:
         ).raw
 
     return {
+        "run_id": tracer.run_id,
+        "trace_path": trace_path.as_posix(),
         "demo": result.demo,
         "events": events,
         "outputs": result.outputs,

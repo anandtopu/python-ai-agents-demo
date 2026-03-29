@@ -12,3 +12,5 @@ agent_history.json
 sessions/
 
 workspace_sandbox/
+
+traces/

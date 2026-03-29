@@ -2,9 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 
 type RunResponse = {
   demo: string;
+  run_id?: string;
   events: Array<Record<string, unknown>>;
   outputs: Record<string, unknown>;
   evaluation?: unknown;
+};
+
+type RunsResponse = {
+  runs: Array<{ run_id: string; path: string; mtime: number }>;
 };
 
 const API_BASE = "http://127.0.0.1:8000";
@@ -16,6 +21,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResponse | null>(null);
   const [error, setError] = useState<string>("");
+  const [runs, setRuns] = useState<Array<{ run_id: string; path: string; mtime: number }>>([]);
 
   const [agentFilter, setAgentFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -26,6 +32,12 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
+        const rr = await fetch(`${API_BASE}/api/runs`);
+        if (rr.ok) {
+          const rdata = (await rr.json()) as RunsResponse;
+          setRuns(rdata.runs ?? []);
+        }
+
         const r = await fetch(`${API_BASE}/api/demos`);
         if (!r.ok) {
           throw new Error(`HTTP ${r.status}`);
@@ -42,6 +54,26 @@ export default function App() {
       }
     })();
   }, []);
+
+  async function onLoadRun(runId: string) {
+    setRunning(true);
+    setError("");
+    try {
+      const r = await fetch(`${API_BASE}/api/runs/${encodeURIComponent(runId)}`);
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}`);
+      }
+      const data = (await r.json()) as { run_id: string; events: Array<Record<string, unknown>> };
+      setResult({ demo: "(loaded)", run_id: data.run_id, events: data.events, outputs: {}, evaluation: null });
+      setAgentFilter("all");
+      setTypeFilter("all");
+      setSearch("");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
 
   async function onRun() {
     setRunning(true);
@@ -73,6 +105,32 @@ export default function App() {
   return (
     <div style={{ fontFamily: "ui-sans-serif, system-ui", padding: 16, maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ marginTop: 0 }}>Multi-Agent Demo UI</h1>
+
+      <div style={{ marginBottom: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <strong>Runs</strong>
+        <select
+          value=""
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+            const v = e.target.value;
+            if (v) {
+              void onLoadRun(v);
+            }
+          }}
+          style={{ padding: 6, minWidth: 240 }}
+        >
+          <option value="">Load past run…</option>
+          {runs.map((r) => (
+            <option key={r.run_id} value={r.run_id}>
+              {r.run_id}
+            </option>
+          ))}
+        </select>
+        {result?.run_id ? (
+          <span>
+            Current run: <code>{result.run_id}</code>
+          </span>
+        ) : null}
+      </div>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <label>

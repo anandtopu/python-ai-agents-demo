@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -54,12 +55,25 @@ class ToolLoopRunner:
     def run(self, messages: list[dict[str, Any]]) -> TurnResult:
         agent_name = _agent_name_from_thread(messages)
         while True:
+            started = time.perf_counter()
             self._emit({"type": "llm_request", "agent": agent_name})
             resp = self._client.chat.completions.create(
                 model=self._model,
                 messages=messages,
                 tools=_tools_for_openai(),
                 tool_choice="auto",
+            )
+
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            usage = getattr(resp, "usage", None)
+            usage_dict = usage.model_dump() if usage is not None else None
+            self._emit(
+                {
+                    "type": "llm_response",
+                    "agent": agent_name,
+                    "duration_ms": elapsed_ms,
+                    "usage": usage_dict,
+                }
             )
 
             msg = resp.choices[0].message
@@ -95,7 +109,9 @@ class ToolLoopRunner:
                             "args": args,
                         }
                     )
+                    tool_started = time.perf_counter()
                     result = run_tool(name, args)
+                    tool_elapsed_ms = int((time.perf_counter() - tool_started) * 1000)
 
                     self._emit(
                         {
@@ -104,6 +120,7 @@ class ToolLoopRunner:
                             "tool_call_id": tc.id,
                             "name": name,
                             "result": result,
+                            "duration_ms": tool_elapsed_ms,
                         }
                     )
 
