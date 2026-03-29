@@ -5,14 +5,14 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from langchain_community.vectorstores import FAISS
+    from langchain_community.vectorstores import FAISS as FAISS_CLS
 except ModuleNotFoundError:  # pragma: no cover
-    FAISS = None  # type: ignore[assignment]
+    FAISS_CLS = None  # type: ignore[assignment]
 
 try:
-    from langchain_openai import OpenAIEmbeddings
+    from langchain_openai import OpenAIEmbeddings as OPENAI_EMBEDDINGS_CLS
 except ModuleNotFoundError:  # pragma: no cover
-    OpenAIEmbeddings = None  # type: ignore[assignment]
+    OPENAI_EMBEDDINGS_CLS = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -26,7 +26,7 @@ class VectorDB:
         self._enabled = False
         self._vs: Any | None = None
 
-        if FAISS is None or OpenAIEmbeddings is None:
+        if FAISS_CLS is None or OPENAI_EMBEDDINGS_CLS is None:
             return
 
         api_key = os.getenv("OPENAI_API_KEY")
@@ -43,7 +43,7 @@ class VectorDB:
         if not self._enabled:
             return
 
-        if FAISS is None or OpenAIEmbeddings is None:
+        if FAISS_CLS is None or OPENAI_EMBEDDINGS_CLS is None:
             return
 
         texts: list[str] = []
@@ -53,8 +53,8 @@ class VectorDB:
                 texts.append(chunk)
                 metadatas.append({"source": source})
 
-        embeddings = OpenAIEmbeddings()
-        self._vs = FAISS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas)
+        embeddings = OPENAI_EMBEDDINGS_CLS()
+        self._vs = FAISS_CLS.from_texts(texts=texts, embedding=embeddings, metadatas=metadatas)
 
     def retrieve(self, query: str, k: int = 4) -> list[RetrievedChunk]:
         if not self.enabled:
