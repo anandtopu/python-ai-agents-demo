@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from openai import OpenAI
 
@@ -23,20 +23,25 @@ class DemoResult:
     outputs: dict[str, Any]
 
 
-def run_demo(client: OpenAI, model: str, demo: str) -> DemoResult:
+def run_demo(
+    client: OpenAI,
+    model: str,
+    demo: str,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
+) -> DemoResult:
     demo = demo.strip().lower()
 
     if demo in {"research", "research_writer_critic", "rwc"}:
-        return _demo_research_writer_critic(client, model)
+        return _demo_research_writer_critic(client, model, on_event=on_event)
 
     if demo in {"code_review", "review"}:
-        return _demo_code_review(client, model)
+        return _demo_code_review(client, model, on_event=on_event)
 
     if demo in {"debate", "debate_consensus"}:
-        return _demo_debate_consensus(client, model)
+        return _demo_debate_consensus(client, model, on_event=on_event)
 
     if demo in {"context", "context_engineering", "cse"}:
-        return _demo_context_engineering_cse(client, model)
+        return _demo_context_engineering_cse(client, model, on_event=on_event)
 
     if demo in {"lc_structured", "langchain_structured", "structured"}:
         return _demo_langchain_structured(client, model)
@@ -68,8 +73,8 @@ def _main() -> None:
         print(f"\n--- {k.upper()} ---\n{v}\n")
 
 
-def _demo_research_writer_critic(client: OpenAI, model: str) -> DemoResult:
-    orch = Orchestrator(client, model)
+def _demo_research_writer_critic(client: OpenAI, model: str, on_event: Any = None) -> DemoResult:
+    orch = Orchestrator(client, model, on_event=on_event)
 
     researcher = Agent(
         name="Researcher",
@@ -131,8 +136,8 @@ def _demo_research_writer_critic(client: OpenAI, model: str) -> DemoResult:
     )
 
 
-def _demo_code_review(client: OpenAI, model: str) -> DemoResult:
-    orch = Orchestrator(client, model)
+def _demo_code_review(client: OpenAI, model: str, on_event: Any = None) -> DemoResult:
+    orch = Orchestrator(client, model, on_event=on_event)
 
     author = Agent(
         name="Author",
@@ -182,8 +187,8 @@ def _demo_code_review(client: OpenAI, model: str) -> DemoResult:
     )
 
 
-def _demo_debate_consensus(client: OpenAI, model: str) -> DemoResult:
-    orch = Orchestrator(client, model)
+def _demo_debate_consensus(client: OpenAI, model: str, on_event: Any = None) -> DemoResult:
+    orch = Orchestrator(client, model, on_event=on_event)
 
     pro = Agent(
         name="Pro",
@@ -222,7 +227,7 @@ def _demo_debate_consensus(client: OpenAI, model: str) -> DemoResult:
     )
 
 
-def _demo_context_engineering_cse(client: OpenAI, model: str) -> DemoResult:
+def _demo_context_engineering_cse(client: OpenAI, model: str, on_event: Any = None) -> DemoResult:
     ce = ContextEngineer()
     ce.add_user_goal(
         "Create a small CSE-style demo: debug an algorithm implementation, add tests, and write a short explanation. "
@@ -231,7 +236,7 @@ def _demo_context_engineering_cse(client: OpenAI, model: str) -> DemoResult:
     ce.add_decision("All code artifacts must be written to workspace_sandbox under 'cse_demo/'.", source="demo")
     ce.add_decision("Use only standard library for tests (unittest).", source="demo")
 
-    orch = Orchestrator(client, model, context_engineer=ce)
+    orch = Orchestrator(client, model, context_engineer=ce, on_event=on_event)
 
     implementer = Agent(
         name="Implementer",

@@ -130,6 +130,47 @@ Artifacts written by demos will appear under:
 
 - `workspace_sandbox/multi_agent/...`
 
+## Web UI (FastAPI + React)
+
+This repo includes a small web app that:
+
+- Runs multi-agent demos on the backend
+- Shows a timeline of outputs
+- Optionally runs an agentic evaluation (judge rubric) and displays the score
+
+### Start the backend
+
+1. Install Python deps:
+
+```powershell
+pip install -r requirements.txt
+```
+
+2. Run the API server:
+
+```powershell
+uvicorn backend.main:app --reload --port 8000
+```
+
+Backend endpoints:
+
+- `GET http://127.0.0.1:8000/api/demos`
+- `POST http://127.0.0.1:8000/api/run`
+
+### Start the frontend
+
+In a second terminal:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Then open:
+
+- `http://127.0.0.1:5173`
+
 ## Files created at runtime
 
 These are intentionally gitignored:
