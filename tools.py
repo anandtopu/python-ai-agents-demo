@@ -165,6 +165,7 @@ def run_shell(command: str, args: list[str] | None = None, timeout_s: int = 10, 
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            check=False,
             shell=False,
         )
         stdout = completed.stdout or ""

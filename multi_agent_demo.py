@@ -346,7 +346,7 @@ class _BugReport(BaseModel):
     fix_plan: list[str] = Field(..., description="Concrete steps to fix")
 
 
-def _demo_langchain_structured(client: OpenAI, model: str) -> DemoResult:
+def _demo_langchain_structured(_client: OpenAI, model: str) -> DemoResult:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("Missing OPENAI_API_KEY")
@@ -366,7 +366,7 @@ def _demo_langchain_structured(client: OpenAI, model: str) -> DemoResult:
     return DemoResult(demo="lc_structured", outputs={"bug_report": report.model_dump()})
 
 
-def _demo_langgraph_hitl(client: OpenAI, model: str) -> DemoResult:
+def _demo_langgraph_hitl(_client: OpenAI, model: str) -> DemoResult:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("Missing OPENAI_API_KEY")
