@@ -90,7 +90,7 @@ class TestMultiAgentEvents(unittest.TestCase):
 
         events: list[dict[str, Any]] = []
         client = _FakeOpenAI(responses)
-        orch = Orchestrator(client, "fake", on_event=lambda ev: events.append(ev))
+        orch = Orchestrator(client, "fake", on_event=events.append)
 
         agent = Agent(name="A", system_prompt="test")
         thread = orch.start_thread(agent)

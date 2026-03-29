@@ -4,6 +4,16 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+try:
+    from langchain_community.vectorstores import FAISS
+except ModuleNotFoundError:  # pragma: no cover
+    FAISS = None  # type: ignore[assignment]
+
+try:
+    from langchain_openai import OpenAIEmbeddings
+except ModuleNotFoundError:  # pragma: no cover
+    OpenAIEmbeddings = None  # type: ignore[assignment]
+
 
 @dataclass
 class RetrievedChunk:
@@ -16,10 +26,7 @@ class VectorDB:
         self._enabled = False
         self._vs: Any | None = None
 
-        try:
-            from langchain_community.vectorstores import FAISS  # noqa: F401
-            from langchain_openai import OpenAIEmbeddings  # noqa: F401
-        except ModuleNotFoundError:
+        if FAISS is None or OpenAIEmbeddings is None:
             return
 
         api_key = os.getenv("OPENAI_API_KEY")
@@ -36,8 +43,8 @@ class VectorDB:
         if not self._enabled:
             return
 
-        from langchain_community.vectorstores import FAISS
-        from langchain_openai import OpenAIEmbeddings
+        if FAISS is None or OpenAIEmbeddings is None:
+            return
 
         texts: list[str] = []
         metadatas: list[dict[str, Any]] = []

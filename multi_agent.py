@@ -52,6 +52,9 @@ class ToolLoopRunner:
             return
         self._on_event(event)
 
+    def emit(self, event: dict[str, Any]) -> None:
+        self._emit(event)
+
     def run(self, messages: list[dict[str, Any]]) -> TurnResult:
         agent_name = _agent_name_from_thread(messages)
         while True:
@@ -165,7 +168,7 @@ class Orchestrator:
 
     def ask(self, thread: list[dict[str, Any]], user_text: str) -> TurnResult:
         agent_name = _agent_name_from_thread(thread)
-        self._runner._emit({"type": "user_message", "agent": agent_name, "content": user_text})
+        self._runner.emit({"type": "user_message", "agent": agent_name, "content": user_text})
         thread.append({"role": "user", "content": user_text})
         return self._runner.run(thread)
 
