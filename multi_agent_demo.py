@@ -7,6 +7,12 @@ from typing import Any
 
 from openai import OpenAI
 
+from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
+from pydantic import BaseModel, Field
+
 from context_engineering import ContextEngineer
 from multi_agent import Agent, Orchestrator
 
@@ -32,12 +38,20 @@ def run_demo(client: OpenAI, model: str, demo: str) -> DemoResult:
     if demo in {"context", "context_engineering", "cse"}:
         return _demo_context_engineering_cse(client, model)
 
-    raise ValueError("Unknown demo. Try: research | code_review | debate | context")
+    if demo in {"lc_structured", "langchain_structured", "structured"}:
+        return _demo_langchain_structured(client, model)
+
+    if demo in {"lg_hitl", "langgraph_hitl", "hitl"}:
+        return _demo_langgraph_hitl(client, model)
+
+    raise ValueError("Unknown demo. Try: research | code_review | debate | context | lc_structured | lg_hitl")
 
 
 def _main() -> None:
     if len(sys.argv) != 2:
-        raise SystemExit("Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context)")
+        raise SystemExit(
+            "Usage: python multi_agent_demo.py <demo>  (research | code_review | debate | context | lc_structured | lg_hitl)"
+        )
 
     demo = sys.argv[1]
     api_key = os.getenv("OPENAI_API_KEY")
@@ -318,6 +332,89 @@ def _demo_context_engineering_cse(client: OpenAI, model: str) -> DemoResult:
             "implementer_fix": i2.assistant_text,
             "explainer": e1.assistant_text,
             "shared_context_snapshot": ce.store.as_compact_text(max_items=50),
+        },
+    )
+
+
+class _BugReport(BaseModel):
+    title: str = Field(..., description="Short bug title")
+    severity: str = Field(..., description="one of: low, medium, high")
+    suspected_root_cause: str = Field(..., description="Hypothesis about what caused it")
+    repro_steps: list[str] = Field(..., description="Steps to reproduce")
+    expected: str = Field(..., description="Expected behavior")
+    actual: str = Field(..., description="Actual behavior")
+    fix_plan: list[str] = Field(..., description="Concrete steps to fix")
+
+
+def _demo_langchain_structured(client: OpenAI, model: str) -> DemoResult:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("Missing OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL")
+
+    llm = ChatOpenAI(model=model, api_key=api_key, base_url=base_url)
+    structured = llm.with_structured_output(_BugReport)
+
+    prompt = (
+        "You are doing a code review triage. Produce a structured bug report.\n\n"
+        "Scenario: A function merge_intervals(intervals) sometimes returns unsorted output and fails to merge adjacent "
+        "intervals like [1,2] and [3,4] when the team expects adjacency to merge. "
+        "Assume integer endpoints and that intervals should be merged if they overlap OR are adjacent."
+    )
+
+    report = structured.invoke(prompt)
+    return DemoResult(demo="lc_structured", outputs={"bug_report": report.model_dump()})
+
+
+def _demo_langgraph_hitl(client: OpenAI, model: str) -> DemoResult:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("Missing OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL")
+
+    State = dict[str, Any]
+
+    def plan_node(state: State) -> dict[str, Any]:
+        llm = ChatOpenAI(model=model, api_key=api_key, base_url=base_url)
+        plan = (
+            llm.invoke("Propose a 3-step plan to fix a failing unit test in a small Python project. Keep it short.")
+            .content
+        )
+        return {"plan": plan, "status": "pending"}
+
+    def approval_node(state: State) -> Command[str]:
+        decision = interrupt({"question": "Approve this plan?", "plan": state.get("plan", "")})
+        return Command(goto="execute" if decision else "cancel")
+
+    def execute_node(state: State) -> dict[str, Any]:
+        return {"status": "approved_and_executed"}
+
+    def cancel_node(state: State) -> dict[str, Any]:
+        return {"status": "rejected"}
+
+    builder = StateGraph(State)
+    builder.add_node("plan", plan_node)
+    builder.add_node("approval", approval_node)
+    builder.add_node("execute", execute_node)
+    builder.add_node("cancel", cancel_node)
+    builder.add_edge(START, "plan")
+    builder.add_edge("plan", "approval")
+    builder.add_edge("execute", END)
+    builder.add_edge("cancel", END)
+
+    graph = builder.compile(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "demo-hitl-1"}}
+
+    first = graph.invoke({} , config=config)
+    interrupts = first.get("__interrupt__", [])
+
+    resumed = graph.invoke(Command(resume=True), config=config)
+
+    return DemoResult(
+        demo="lg_hitl",
+        outputs={
+            "interrupt_payload": [getattr(i, "value", None) for i in interrupts],
+            "result": dict(resumed),
         },
     )
 
